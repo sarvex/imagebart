@@ -105,7 +105,7 @@ def sample_unconditional(models, batch_size, chain_schedule, temperature_schedul
     with on_gpu(model):
         sample = model.decode_to_img(c_scale_indices, qzshape)
 
-    log = dict()
+    log = {}
     log["samples"] = sample
     log["inputs"] = unmasked_input
     log["masked_inputs"] = masked_inputs
@@ -245,16 +245,15 @@ def get_data(config):
 
 
 def get_config(path):
-    config = OmegaConf.load(path)
-    return config
+    return OmegaConf.load(path)
 
 
 @st.cache(allow_output_mutation=True)
 def load_models(paths, gpu=False, eval_mode=True):
     assert not gpu, 'moving them later'
-    models = list()
-    configs = list()
-    global_steps = list()
+    models = []
+    configs = []
+    global_steps = []
     for ckpt_path, config_path in zip(paths["checkpoints"], paths["configs"]):
         print(f"loading config from {config_path} and model from {ckpt_path}")
         config = get_config(config_path)
@@ -266,9 +265,9 @@ def load_models(paths, gpu=False, eval_mode=True):
         global_steps.append(global_step)
         print(f"loaded model from global step {global_step}")
     if "repeat" in paths:
-        n_models = list()
-        n_configs = list()
-        n_global_steps = list()
+        n_models = []
+        n_configs = []
+        n_global_steps = []
         for i, n in enumerate(paths["repeat"]):
             print(f"Repeating model {i} {n}x.")
             n_models += n * [models[i]]
@@ -316,14 +315,11 @@ if __name__ == "__main__":
     chain_schedule = []
     st.write('Define chain schedule')
     st.info(
-        f'The n-th entry in the chain schedule defines the number of sucessive runs, '
-        f'the n-th AR submodel should perfom before passing the output to the next submodel.')
+        'The n-th entry in the chain schedule defines the number of sucessive runs, the n-th AR submodel should perfom before passing the output to the next submodel.'
+    )
     for n in range(len(models)):
         if models[n].redraw_prob != 'geometric':
-            if n == len(models) - 1:
-                def_chain_len = 1
-            else:
-                def_chain_len = 5
+            def_chain_len = 1 if n == len(models) - 1 else 5
         else:
             def_chain_len = 3
         chain_n = st.number_input(f"Chain length for scale #{n + 1}", min_value=1, max_value=100, value=def_chain_len)

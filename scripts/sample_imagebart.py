@@ -42,7 +42,6 @@ class L1(torch.nn.Module):
 
 @torch.no_grad()
 def custom_log_images(model, batch, temperature):
-    log = dict()
     x = model.get_input(batch, model.image_key)
     x = x.to(model.device)
     # encode
@@ -51,9 +50,7 @@ def custom_log_images(model, batch, temperature):
     quant, _, _ = model.quantize(h, temp=temperature, rescale_logits=True)
     # decode
     x_rec = model.decode(quant)
-    log["inputs"] = x
-    log["reconstructions"] = x_rec
-    return log
+    return {"inputs": x, "reconstructions": x_rec}
 
 
 def grid2img(grid):
@@ -79,9 +76,7 @@ def get_top_k_schedule(n_steps, codebook_size):
         default = f"{codebook_size}," * n_steps
         tk_list = st.text_input(f"Top-K Values (comma separated, must be {n_steps}, counted in sampling order, i.e. from last to first scale)", f"{default[:-1]}")
         tks = tk_list.split(",")
-        top_k_schedule = list()
-        for tk in tks:
-            top_k_schedule.append(int(tk))
+        top_k_schedule = [int(tk) for tk in tks]
         assert len(top_k_schedule) == n_steps
     else:
         return None
@@ -97,12 +92,10 @@ def get_temperature_schedule(n_steps):
         tk_end = st.number_input("End Top-Temperature Value", value=0.1)
         schedule = np.linspace(tk_start, tk_end, n_steps)
     elif type == "user":
-        default = f"{1.0}," * n_steps
+        default = '1.0,' * n_steps
         tk_list = st.text_input(f"Temperature Values (comma separated, must be {n_steps}, counted in sampling order, i.e. from last to first scale)", f"{default[:-1]}")
         tks = tk_list.split(",")
-        schedule = list()
-        for tk in tks:
-            schedule.append(float(tk))
+        schedule = [float(tk) for tk in tks]
         assert len(schedule) == n_steps
     else:
         return None
@@ -178,9 +171,8 @@ def run(models, user_conditioning, batch_size, device=torch.device("cuda"),condi
 
     if st.button("Sample", False):
         grid_ph = st.empty()
-        final_samples = list()
-        for n in range(n_batches):
-
+        final_samples = []
+        for _ in range(n_batches):
             scaleinfo = st.empty()
             scale = start_index
             c_scale_indices = torch.randint(0,
@@ -235,8 +227,13 @@ def render_as_grid(scale_samples, batch_size, stack=True):
         grid = make_grid(scale_samples[:, i, ...], nrow=scale_samples.shape[0])
         grids.append(grid)
 
-    for k in range(len(grids)):
-        st.image(chw_to_st(grids[k]), clamp=True, output_format="PNG", use_column_width=grids[k].shape[2] < 500)
+    for grid_ in grids:
+        st.image(
+            chw_to_st(grid_),
+            clamp=True,
+            output_format="PNG",
+            use_column_width=grid_.shape[2] < 500,
+        )
 
 
 def load_model_from_config(config, sd, gpu=True, eval_mode=True):
@@ -261,16 +258,15 @@ def get_data(config):
 
 
 def get_config(path):
-    config = OmegaConf.load(path)
-    return config
+    return OmegaConf.load(path)
 
 
 @st.cache(allow_output_mutation=True)
 def load_models(paths, gpu=False, eval_mode=True):
     assert not gpu, 'moving them later'
-    models = list()
-    configs = list()
-    global_steps = list()
+    models = []
+    configs = []
+    global_steps = []
 
     for ckpt_path, config_path in zip(paths["checkpoints"], paths["configs"]):
         print(f"loading config from {config_path} and model from {ckpt_path}")

@@ -72,7 +72,7 @@ def pick_and_pop(keys, d):
 
 
 def group_dict_by_key(cond, d):
-    return_val = [dict(), dict()]
+    return_val = [{}, {}]
     for key in d.keys():
         match = bool(cond(key))
         ind = int(not match)
@@ -418,7 +418,7 @@ class AttentionLayers(nn.Module):
 
         if cross_attend and not only_cross:
             default_block = ('a', 'c', 'f')
-        elif cross_attend and only_cross:
+        elif cross_attend:
             default_block = ('c', 'f')
         else:
             default_block = ('a', 'f')
@@ -462,11 +462,7 @@ class AttentionLayers(nn.Module):
             if isinstance(layer, Attention) and exists(branch_fn):
                 layer = branch_fn(layer)
 
-            if gate_residual:
-                residual_fn = GRUGating(dim)
-            else:
-                residual_fn = Residual()
-
+            residual_fn = GRUGating(dim) if gate_residual else Residual()
             self.layers.append(nn.ModuleList([
                 norm_fn(),
                 layer,
@@ -899,7 +895,7 @@ class ScaledXTransformer(XTransformer):
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None, enc=None):
         scale = src[:,self.scale_pos]-1 # scale comes in [1...n_scales]
-        assert (0<=scale).all()
+        assert (scale >= 0).all()
         scalors = torch.exp(self.log_scalors[scale])
         logits, loss = super().forward(src, tgt, src_mask, tgt_mask, enc=enc)
         logits = logits*scalors.reshape(logits.shape[0],1,1)
@@ -915,7 +911,7 @@ class FineScaledXTransformer(XTransformer):
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None, enc=None):
         scale = src[:,self.scale_pos]-1 # scale comes in [1...n_scales]
-        assert (0<=scale).all()
+        assert (scale >= 0).all()
         scalors = torch.exp(self.log_scalors[scale])
         logits, loss = super().forward(src, tgt, src_mask, tgt_mask, enc=enc)
         logits = logits*scalors[:,:logits.shape[1],None]
@@ -936,7 +932,7 @@ class ResidualScaledXTransformer(XTransformer):
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None, enc=None):
         scale = src[:,self.scale_pos]-1 # scale comes in [1...n_scales]
-        assert (0<=scale).all()
+        assert (scale >= 0).all()
         scalors = torch.exp(self.log_scalors[scale])
 
         xt = src[:,self.xt_start:self.xt_end]
@@ -965,7 +961,7 @@ class ResidualXTransformer(XTransformer):
 
     def forward(self, src, tgt, src_mask=None, tgt_mask=None, enc=None):
         scale = src[:,self.scale_pos]-1 # scale comes in [1...n_scales]
-        assert (0<=scale).all()
+        assert (scale >= 0).all()
 
         xt = src[:,self.xt_start:self.xt_end]
         xt = torch.nn.functional.one_hot(xt, self.decoder.num_tokens)

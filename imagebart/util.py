@@ -9,8 +9,7 @@ class ClassProvider(torch.nn.Module):
         self.key = key
 
     def forward(self, batch):
-        c = batch[self.key][:, None]
-        return c
+        return batch[self.key][:, None]
 
 
 class BasicTokenizer(torch.nn.Module):
@@ -27,8 +26,7 @@ class BasicTokenizer(torch.nn.Module):
 
     def forward(self, batch):
         text = batch[self.key]
-        tokens = self.tknz_fn(text).to(self.device)
-        return tokens
+        return self.tknz_fn(text).to(self.device)
 
 
 class KeyNotFoundError(Exception):
@@ -36,12 +34,12 @@ class KeyNotFoundError(Exception):
         self.cause = cause
         self.keys = keys
         self.visited = visited
-        messages = list()
+        messages = []
         if keys is not None:
-            messages.append("Key not found: {}".format(keys))
+            messages.append(f"Key not found: {keys}")
         if visited is not None:
-            messages.append("Visited: {}".format(visited))
-        messages.append("Cause:\n{}".format(cause))
+            messages.append(f"Visited: {visited}")
+        messages.append(f"Cause:\n{cause}")
         message = "\n".join(messages)
         super().__init__(message)
 
@@ -50,7 +48,7 @@ def log_txt_as_img(wh, xc, size=10):
     # wh a tuple of (width, height)
     # xc a list of captions to plot
     b = len(xc)
-    txts = list()
+    txts = []
     for bi in range(b):
         txt = Image.new("RGB", wh, color="white")
         draw = ImageDraw.Draw(txt)

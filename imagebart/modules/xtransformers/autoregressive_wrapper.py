@@ -109,6 +109,4 @@ class AutoregressiveWrapper(nn.Module):
 
         out = self.net(xi, **kwargs)
         loss = F.cross_entropy(out.transpose(1, 2), xo, ignore_index=self.ignore_index)
-        if return_logits:
-            return out, loss
-        return loss
+        return (out, loss) if return_logits else loss

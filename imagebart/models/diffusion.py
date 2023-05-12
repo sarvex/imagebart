@@ -155,7 +155,7 @@ class DenoisingTransformer(pl.LightningModule):
         for k in sd.keys():
             for ik in ignore_keys:
                 if k.startswith(ik):
-                    self.print("Deleting key {} from state_dict.".format(k))
+                    self.print(f"Deleting key {k} from state_dict.")
                     del sd[k]
         missing, unexpected = self.load_state_dict(sd, strict=False)
         print(f"Restored from {path} with {len(missing)} missing keys and {len(unexpected)} unexpected keys.")
@@ -223,8 +223,7 @@ class DenoisingTransformer(pl.LightningModule):
         bhwc = (zshape[0], zshape[2], zshape[3], zshape[1])
         quant_z = self.first_stage_model.quantize.get_codebook_entry(
             index.reshape(-1), shape=bhwc)
-        x = self.first_stage_model.decode(quant_z)
-        return x
+        return self.first_stage_model.decode(quant_z)
 
     @torch.no_grad()
     def sample_single_scale(self, c_indices, scale, temp_x, steps,
@@ -284,25 +283,21 @@ class DenoisingTransformer(pl.LightningModule):
 
     def get_input(self, batch, key):
         x = batch[key]
-        x = x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
-        return x
+        return x.permute(0, 3, 1, 2).to(memory_format=torch.contiguous_format)
 
     @torch.no_grad()
     def get_h(self, x):
-        h = self.first_stage_model.encode_to_prequant(x)
-        return h
+        return self.first_stage_model.encode_to_prequant(x)
 
     @torch.no_grad()
     def get_conditioning(self, batch):
-        if self.conditioner_key is not None:
-            c = self.get_input(batch, self.conditioner_key)
-            if c.device != self.conditioner.device:
-                c = c.to(device=self.conditioner.device)
-            quant_c, _, info = self.conditioner.encode(c)
-            cond = info[2].view(quant_c.shape[0], -1)
-        else:
-            cond = self.conditioner(batch)
-        return cond
+        if self.conditioner_key is None:
+            return self.conditioner(batch)
+        c = self.get_input(batch, self.conditioner_key)
+        if c.device != self.conditioner.device:
+            c = c.to(device=self.conditioner.device)
+        quant_c, _, info = self.conditioner.encode(c)
+        return info[2].view(quant_c.shape[0], -1)
 
     @torch.no_grad()
     def get_scales(self, pre_quant, force_random=False):
@@ -497,7 +492,7 @@ class DenoisingTransformer(pl.LightningModule):
                    **kwargs):
         with self.ema_scope(context="Plotting"):
             top_k = top_k if top_k is not None else self.top_k
-            log = dict()
+            log = {}
             x = self.get_input(batch, self.first_stage_key).to(self.device)[:N, ...]
             cond = None
             if self.conditioner is not None:
@@ -521,7 +516,6 @@ class DenoisingTransformer(pl.LightningModule):
                 # only batch size 1
                 Nb = 1
                 t1 = time.time()
-                scale_samples = list()
                 # get first scale: (uniformly distributed)
                 _, _, info_c = self.first_stage_model.quantize(pre_quant[:Nb])
                 c_scale_indices = rearrange(info_c[2], 'b h w -> b (h w)')
@@ -531,8 +525,12 @@ class DenoisingTransformer(pl.LightningModule):
                                                 self.first_stage_model.quantize.re_embed,
                                                 c_scale_indices.shape,
                                                 device=c_scale_indices.device)
-                scale_samples.append(self.decode_to_img(c_scale_indices,
-                                                        [Nb, quant_z.shape[1], quant_z.shape[2], quant_z.shape[3]]))
+                scale_samples = [
+                    self.decode_to_img(
+                        c_scale_indices,
+                        [Nb, quant_z.shape[1], quant_z.shape[2], quant_z.shape[3]],
+                    )
+                ]
                 current_scale = ((len(self.temperature_range) - 1) * torch.ones(1, 1)).to(c_scale_indices)
                 for i in range(len(self.temperature_range) - 2, -1, -1):
                     c_scale_indices = self.sample_single_scale(c_scale_indices,
@@ -591,7 +589,7 @@ class DenoisingTransformer(pl.LightningModule):
                     tmpshape[0] = diffusion_indices[:start_idx, ...][::log_scale_step].shape[0]
                     pre_scale_samples = self.decode_to_img(diffusion_indices[:start_idx, ...][::log_scale_step],
                                                            tmpshape)
-                    scale_samples = list()
+                    scale_samples = []
                     c_scale_indices = diffusion_indices[[start_idx - 1], ...]
                     quantshape = list(qshape)
                     quantshape[0] = 1
@@ -653,7 +651,7 @@ class DenoisingTransformer(pl.LightningModule):
         blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
         for mn, m in self.transformer.named_modules():
             for pn, p in m.named_parameters():
-                fpn = '%s.%s' % (mn, pn) if mn else pn  # full param name
+                fpn = f'{mn}.{pn}' if mn else pn
 
                 if pn.endswith('bias'):
                     # all biases will not be decayed
@@ -669,13 +667,15 @@ class DenoisingTransformer(pl.LightningModule):
         no_decay.add('pos_emb')
 
         # validate that we considered every parameter
-        param_dict = {pn: p for pn, p in self.transformer.named_parameters()}
+        param_dict = dict(self.transformer.named_parameters())
         inter_params = decay & no_decay
         union_params = decay | no_decay
-        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params),)
-        assert len(
-            param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
-                                                    % (str(param_dict.keys() - union_params),)
+        assert (
+            len(inter_params) == 0
+        ), f"parameters {str(inter_params)} made it into both decay/no_decay sets!"
+        assert (
+            len(param_dict.keys() - union_params) == 0
+        ), f"parameters {str(param_dict.keys() - union_params)} were not separated into either decay/no_decay set!"
 
         # create the pytorch optimizer object
         optim_groups = [

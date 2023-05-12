@@ -14,9 +14,10 @@ def load_betas(path, dist, metric, n_steps):
     alphacum = np.array(data[dist]["alphacum"])
     values = np.array(data[dist][metric])[:,0]
 
-    equi_alphacum = list()
-    for val in np.linspace(values.min(), values.max(), n_steps):
-        equi_alphacum.append(find_roots(alphacum, values-val)[0])
+    equi_alphacum = [
+        find_roots(alphacum, values - val)[0]
+        for val in np.linspace(values.min(), values.max(), n_steps)
+    ]
     equi_alphacum = np.array(equi_alphacum)
     beta_1toT = 1-equi_alphacum[1:]/equi_alphacum[:-1]
     beta_0toT = np.concatenate((np.array([0.0]), beta_1toT))
